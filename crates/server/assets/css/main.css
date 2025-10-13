@@ -1,0 +1,22 @@
+@keyframes pulsate {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.3);
+  }
+}
+
+.recording-indicator.active {
+  animation: pulsate 1s ease-in-out infinite;
+  color: red;
+}
+
+.media-input-file {
+    opacity: 0;
+    position: absolute;
+    pointer-events: auto;
+    height: 1px;
+    width: 1px;
+    z-index: -1;
+}

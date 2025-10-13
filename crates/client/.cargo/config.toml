@@ -1,0 +1,22 @@
+[alias]
+# esp32c3 = "run --release --features=esp32c3 --target=riscv32imc-unknown-none-elf"
+esp32c3 = "run --profile esp32-c3-release --features=esp32c3 --target=riscv32imc-unknown-none-elf"
+
+[build]
+target = "riscv32imc-unknown-none-elf"
+
+[target.'cfg(target_arch = "riscv32")']
+#runner = "espflash flash --monitor --partition-table=partitions.csv"
+runner = "probe-rs run --chip esp32c3"
+
+rustflags = [
+  "-C",
+  "link-arg=-Tlinkall.x",
+  "-C",
+  "link-arg=-Tdefmt.x",
+  "-C",
+  "force-frame-pointers",
+]
+
+# [env]
+# DEFMT_LOG = "debug"

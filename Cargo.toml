@@ -1,0 +1,21 @@
+[workspace]
+# members = ["crates/client", "crates/common", "crates/server"]
+members = ["crates/common", "crates/server"]
+resolver = "3"
+
+[workspace.package]
+edition = "2024"
+
+[workspace.dependencies]
+clatter = { version = "1.1.0", default-features = false }
+postcard = { version = "1.1.3", default-features = false }
+
+[profile.esp32-c3-release]
+inherits = "release"
+codegen-units = 1
+debug = 2
+debug-assertions = false
+incremental = false
+lto = 'fat'
+opt-level = 's'
+overflow-checks = false

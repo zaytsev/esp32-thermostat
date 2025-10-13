@@ -1,0 +1,17 @@
+[package]
+name = "esp32-thermostat-common"
+version = "0.1.0"
+edition.workspace = true
+
+[dependencies]
+defmt = { version = "1.0.1", optional = true }
+enumflags2 = { version = "0.7.12", features = ["serde"] }
+postcard = { version = "1.1", default-features = false }
+serde = { version = "1.0", default-features = false }
+
+[features]
+alloc = ["serde/alloc"]
+std = ["serde/std", "postcard/use-std", "alloc", "enumflags2/std"]
+
+nostd = []
+defmt = ["dep:defmt", "postcard/use-defmt"]
