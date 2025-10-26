@@ -244,6 +244,7 @@
                   ExecStart = let
                     startScript = pkgs.writeShellScript "${packageName}-start" ''
                       export SECRET="$(< "$CREDENTIALS_DIRECTORY/SECRET")"
+                      export NOISE_SECRET="$(< "$CREDENTIALS_DIRECTORY/SECRET")"
                       exec ${cfg.package}/bin/${packageName}
                     '';
                   in
