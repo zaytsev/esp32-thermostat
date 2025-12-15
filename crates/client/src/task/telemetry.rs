@@ -5,12 +5,12 @@ use core::{
 };
 
 use clatter::{
-    Handshaker, NqHandshake,
+    Handshaker, NqHandshakeCore,
     bytearray::SensitiveByteArray,
     crypto::{cipher::AesGcm, dh::X25519, hash::Sha256},
     error::{DhError, HandshakeError, TransportError},
     handshakepattern::noise_nn_psk0,
-    traits::{Dh, Hash},
+    traits::{CryptoRng, Dh, Hash, RngCore},
     transportstate::TransportState,
 };
 use defmt::{Format, debug, error, info, trace, warn};
@@ -65,6 +65,29 @@ impl Default for ConnectionOptions {
         }
     }
 }
+
+#[derive(Default)]
+struct Esp32Rng(Trng);
+
+impl RngCore for Esp32Rng {
+    fn next_u32(&mut self) -> u32 {
+        self.0.next_u32()
+    }
+
+    fn next_u64(&mut self) -> u64 {
+        self.0.next_u64()
+    }
+
+    fn fill_bytes(&mut self, dest: &mut [u8]) {
+        self.0.fill_bytes(dest);
+    }
+
+    fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), clatter::rand_core::Error> {
+        self.0.try_fill_bytes(dest)
+    }
+}
+
+impl CryptoRng for Esp32Rng {}
 
 #[derive(Clone)]
 pub struct PresharedKey {
@@ -244,6 +267,7 @@ impl From<SendError> for Error {
         match value {
             SendError::NoRoute => Self::NoNetworkRoute,
             SendError::SocketNotBound => Self::InvalidSocketState,
+            SendError::PacketTooLarge => todo!(),
         }
     }
 }
@@ -262,7 +286,6 @@ pub async fn run(
     psk: PresharedKey,
     config: ConnectionOptions,
     stack: Stack<'static>,
-    mut trng: Trng<'static>,
     control_messages: ControlChannelReceiver<'static>,
     app_events: AppEventsSender<'static>,
 ) {
@@ -277,6 +300,8 @@ pub async fn run(
 
     let mut buf = [0u8; MSG_MAX_LEN];
     let mut tmp = [0u8; MSG_MAX_LEN];
+
+    let mut trng = Esp32Rng::default();
 
     loop {
         let session = match init_session(
@@ -315,16 +340,19 @@ pub async fn run(
     }
 }
 
-async fn init_session<'a>(
+async fn init_session<'a, RNG>(
     socket: &UdpSocket<'a>,
     sender_id: u64,
     psk: &'a [u8],
     opts: &'a ConnectionOptions,
     inp: &'a mut [u8],
     out: &'a mut [u8],
-    trng: &'a mut Trng<'_>,
+    trng: &'a mut RNG,
     control_messages: &ControlChannelReceiver<'static>,
-) -> Result<Session, Error> {
+) -> Result<Session, Error>
+where
+    RNG: clatter::traits::Rng,
+{
     let broadcast: UdpMetadata = SocketAddrV4::new(Ipv4Addr::BROADCAST, opts.server_port).into();
     let mut retry_timeout = opts.discovery_retry_timeout;
     let retry_max_timeout = opts.discovery_max_retry_timeout;
@@ -365,7 +393,7 @@ async fn init_session<'a>(
     }
 }
 
-async fn do_handshake<'a, 's>(
+async fn do_handshake<'a, RNG>(
     socket: &UdpSocket<'a>,
     endpoint: UdpMetadata,
     sender_id: u64,
@@ -373,12 +401,15 @@ async fn do_handshake<'a, 's>(
     opts: &'a ConnectionOptions,
     inp: &'a mut [u8],
     out: &'a mut [u8],
-    trng: &'a mut Trng<'s>,
-) -> Result<Session, Error> {
+    rng: &'a mut RNG,
+) -> Result<Session, Error>
+where
+    RNG: clatter::traits::Rng,
+{
     debug!("Initializing session handshake");
 
-    let key = X25519::genkey(trng)?;
-    let mut handshake = NqHandshake::<X25519, AesGcm, Sha256, _>::new(
+    let key = X25519::genkey_rng(rng)?;
+    let mut handshake = NqHandshakeCore::<X25519, AesGcm, Sha256, RNG>::new(
         noise_nn_psk0(),
         &[],
         true,
@@ -386,7 +417,6 @@ async fn do_handshake<'a, 's>(
         None,
         None,
         None,
-        trng,
     )?;
     handshake.push_psk(psk);
 

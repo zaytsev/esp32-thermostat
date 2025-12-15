@@ -1,7 +1,7 @@
 #![no_std]
 #![no_main]
 
-use defmt::{debug, error, info};
+use defmt::{debug, error};
 use defmt_rtt as _;
 use embassy_executor::Spawner;
 use embassy_net::{HardwareAddress, Stack, StackResources};
@@ -11,13 +11,13 @@ use esp_backtrace as _;
 use esp_bootloader_esp_idf::partitions;
 use esp_hal::{
     clock::CpuClock,
-    config::WatchdogConfig,
     gpio::{Level, Output, OutputConfig},
-    rng::Trng,
-    timer::timg::TimerGroup,
+    interrupt::software::SoftwareInterruptControl,
+    rng::Rng,
+    timer::timg::{MwdtStage, TimerGroup},
 };
+use esp_radio::{Controller, init};
 use esp_storage::FlashStorage;
-use esp_wifi::{EspWifiController, init};
 use esp32_thermostat_common::proto::HeaterParams;
 
 mod config;
@@ -63,45 +63,43 @@ type AppEventsSender<'a> = embassy_sync::channel::Sender<
     APP_EVENT_CHANNEL_CAPACITY,
 >;
 
-#[esp_hal_embassy::main]
+#[esp_rtos::main]
 async fn main(spawner: Spawner) -> ! {
-    let config = esp_hal::Config::default()
-        .with_cpu_clock(CpuClock::max())
-        .with_watchdog(WatchdogConfig::default().with_timg0(
-            esp_hal::config::WatchdogStatus::Enabled(
-                esp_hal::time::Duration::from_millis(TEMPERATURE_READING_INTERVAL.as_millis()) * 3,
-            ),
-        ));
+    let config = esp_hal::Config::default().with_cpu_clock(CpuClock::max());
     let peripherals = esp_hal::init(config);
+    // let config = esp_hal::Config::default()
+    //     .with_cpu_clock(CpuClock::max())
+    //     .with_watchdog(WatchdogConfig::default().with_timg0(
+    //         esp_hal::config::WatchdogStatus::Enabled(
+    //             esp_hal::time::Duration::from_millis(TEMPERATURE_READING_INTERVAL.as_millis()) * 3,
+    //         ),
+    //     ));
+    // let peripherals = esp_hal::init(config);
 
     esp_alloc::heap_allocator!(size: 72 * 1024);
 
     let timg0 = TimerGroup::new(peripherals.TIMG0);
     let mut wdt = timg0.wdt;
-    let trng = Trng::new(peripherals.RNG, peripherals.ADC1);
-    let mut rng = trng.rng;
-
-    let esp_wifi_ctrl = &*mk_static!(
-        EspWifiController<'static>,
-        defmt::unwrap!(init(timg0.timer0, rng.clone()))
+    wdt.set_timeout(
+        MwdtStage::Stage0,
+        esp_hal::time::Duration::from_millis((TEMPERATURE_READING_INTERVAL * 2).as_millis()),
     );
-    let (controller, interfaces) = esp_wifi::wifi::new(esp_wifi_ctrl, peripherals.WIFI).unwrap();
+    // let trng = Trng::try_new().unwrap();
+    // let mut rng = trng.rng;
+
+    let software_interrupt = SoftwareInterruptControl::new(peripherals.SW_INTERRUPT);
+    esp_rtos::start(timg0.timer0, software_interrupt.software_interrupt0);
+
+    let esp_wifi_ctrl = &*mk_static!(Controller<'static>, defmt::unwrap!(init()));
+    let wifi_config = esp_radio::wifi::Config::default();
+    let (controller, interfaces) =
+        esp_radio::wifi::new(esp_wifi_ctrl, peripherals.WIFI, wifi_config).unwrap();
 
     let wifi_interface = interfaces.sta;
 
-    cfg_if::cfg_if! {
-        if #[cfg(feature = "esp32")] {
-            let timg1 = TimerGroup::new(peripherals.TIMG1);
-            esp_hal_embassy::init(timg1.timer0);
-        } else {
-            use esp_hal::timer::systimer::SystemTimer;
-            let systimer = SystemTimer::new(peripherals.SYSTIMER);
-            esp_hal_embassy::init(systimer.alarm0);
-        }
-    }
-
     let config = embassy_net::Config::dhcpv4(Default::default());
 
+    let rng = Rng::new();
     let seed = (rng.random() as u64) << 32 | rng.random() as u64;
 
     // Init network stack
@@ -112,7 +110,7 @@ async fn main(spawner: Spawner) -> ! {
         seed,
     );
 
-    let mut flash = FlashStorage::new();
+    let mut flash = FlashStorage::new(peripherals.FLASH);
     let mut pt_mem = [0u8; partitions::PARTITION_TABLE_MAX_LEN];
     let partition_table = partitions::read_partition_table(&mut flash, &mut pt_mem).unwrap();
 
@@ -159,7 +157,6 @@ async fn main(spawner: Spawner) -> ! {
             ..Default::default()
         },
         stack,
-        trng,
         telemetry_control.receiver(),
         app_events.sender(),
     ));

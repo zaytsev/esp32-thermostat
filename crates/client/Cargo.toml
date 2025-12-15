@@ -6,73 +6,58 @@ edition.workspace = true
 [dependencies]
 esp32-thermostat-common = { path = "../common", features = ["nostd", "defmt"] }
 
-cfg-if = "1.0.3"
+cfg-if = "1.0.4"
 
-embassy-executor = { version = "0.7.0", features = [
-  "task-arena-size-20480",
-  "defmt",
-] }
-embassy-futures = "0.1.1"
-embassy-net = { version = "0.6.0", features = [
+embassy-executor = { version = "0.9.1", features = ["defmt"] }
+embassy-futures = "0.1.2"
+embassy-net = { version = "0.7.1", features = [
   "dhcpv4",
   "medium-ethernet",
   "udp",
   "defmt",
 ] }
-embassy-sync = "0.7.1"
-embassy-time = "0.4.0"
+embassy-sync = "0.7.2"
+embassy-time = "0.5.0"
 
-embedded-io-async = "0.6.1"
+embedded-io-async = "0.7.0"
 embedded-storage = "0.3"
 
-esp-alloc = { version = "0.8.0", features = ["defmt"] }
-esp-backtrace = { version = "0.17.0", features = [
-  "exception-handler",
-  "panic-handler",
-  "defmt",
-] }
-esp-bootloader-esp-idf = { version = "0.2.0", features = ["defmt"] }
-esp-config = { version = "0.5", features = [] }
-esp-hal = { version = "1.0.0-rc.0", features = ["defmt", "unstable"] }
-esp-hal-embassy = { version = "0.9.0", features = ["defmt"] }
+esp-alloc = { version = "0.9.0", features = ["defmt"] }
+esp-backtrace = { version = "0.18.1", features = ["panic-handler", "defmt"] }
+esp-bootloader-esp-idf = { version = "0.4.0", features = ["defmt"] }
+esp-config = { version = "0.6", features = [] }
+esp-hal = { version = "1.0.0", features = ["defmt", "unstable"] }
+esp-radio = { version = "0.17.0", features = ["defmt", "wifi"] }
+esp-rtos = { version = "0.2.0", features = ["defmt", "embassy", "esp-radio"] }
+esp-storage = { version = "0.8" }
+
 esp-hal-rmt-onewire = { git = "https://github.com/zaytsev/esp-hal-rmt-onewire.git", branch = "rust-stable" }
-esp-storage = { version = "0.7" }
-esp-wifi = { version = "0.15", features = ["defmt", "wifi"] }
 
 defmt = { version = "1" }
 defmt-rtt = { version = "1" }
 
 static_cell = "2.1.1"
-statig = { version = "0.4.1", features = ["async"] }
 
-fixed = "1.28"
-nb = "1.1"
-postcard = { workspace = true, features = ["heapless-cas", "use-defmt"] }
-serde = { version = "1.0", default-features = false }
-
-clatter = { version = "1.1.0", default-features = false, features = [
+clatter = { version = "2.0.0", default-features = false, features = [
   "use-25519",
   "use-aes-gcm",
   "use-sha",
 ] }
+fixed = "1.29"
+heapless = { version = "0.9.2", features = ["serde", "defmt"] }
+nb = "1.1"
+postcard = { workspace = true, features = ["heapless-cas", "use-defmt"] }
+serde = { version = "1.0", default-features = false }
 
 [features]
 default = ["esp32c3"]
 
-esp32 = [
-  "esp-hal/esp32",
-  "esp-backtrace/esp32",
-  "esp-hal-embassy/esp32",
-  "esp-wifi/esp32",
-  "esp-bootloader-esp-idf/esp32",
-]
-
 esp32c3 = [
   "esp-hal/esp32c3",
   "esp-backtrace/esp32c3",
-  "esp-hal-embassy/esp32c3",
+  "esp-rtos/esp32c3",
   "esp-storage/esp32c3",
-  "esp-wifi/esp32c3",
+  "esp-radio/esp32c3",
   "esp-bootloader-esp-idf/esp32c3",
 ]
 

@@ -1,7 +1,7 @@
 use defmt::{error, expect, info};
 use embassy_time::{Duration, Timer};
-use esp_wifi::wifi::{
-    ClientConfiguration, Configuration, WifiController, WifiEvent, WifiState, wifi_state,
+use esp_radio::wifi::{
+    ClientConfig, ModeConfig, WifiController, WifiEvent, WifiStaState, sta_state,
 };
 
 use crate::{AppEvent, AppEventsSender};
@@ -17,18 +17,18 @@ pub async fn connect(
     info!("Starting WiFi connection task");
 
     expect!(
-        controller.set_power_saving(esp_wifi::config::PowerSaveMode::None),
+        controller.set_power_saving(esp_radio::wifi::PowerSaveMode::None),
         "disabled wifi power saving"
     );
 
     expect!(
-        controller.set_mode(esp_wifi::wifi::WifiMode::Sta),
+        controller.set_mode(esp_radio::wifi::WifiMode::Sta),
         "set wifi mode to sta"
     );
 
     loop {
-        match wifi_state() {
-            WifiState::StaConnected => {
+        match sta_state() {
+            WifiStaState::Connected => {
                 app_events.send(AppEvent::WifiConnected).await;
                 controller.wait_for_event(WifiEvent::StaDisconnected).await;
                 app_events.send(AppEvent::WifiDisconnected).await;
@@ -38,13 +38,12 @@ pub async fn connect(
         }
         if !matches!(controller.is_started(), Ok(true)) {
             info!("Configuring wifi connection with SSID={=str}", ssid);
-            let client_config = Configuration::Client(ClientConfiguration {
-                ssid: ssid.into(),
-                password: password.into(),
-                // TODO: configure channel?
-                ..Default::default()
-            });
-            match controller.set_configuration(&client_config) {
+            let mode_config = ModeConfig::Client(
+                ClientConfig::default()
+                    .with_ssid(ssid.into())
+                    .with_password(password.into()),
+            );
+            match controller.set_config(&mode_config) {
                 Ok(_) => {
                     info!("Wifi conifguration applied");
                 }
