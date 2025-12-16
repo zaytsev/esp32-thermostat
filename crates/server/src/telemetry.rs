@@ -4,8 +4,8 @@ use anyhow::{Context, anyhow};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use clatter::{
-    Handshaker, NqHandshake,
-    crypto::{cipher::AesGcm, dh::X25519, hash::Sha256},
+    Handshaker, NqHandshake, NqHandshakeCore,
+    crypto::{cipher::AesGcm, dh::X25519, hash::Sha256, rng::DefaultRng},
     handshakepattern::noise_nn_psk0,
     traits::Dh,
     transportstate::TransportState,
@@ -42,13 +42,16 @@ struct Session {
 }
 
 impl Session {
-    fn init<'a, 'b>(
+    fn init<'a, 'b, RNG>(
         message: &'a [u8],
         psk: &'b [u8],
-        rng: &'b mut StdRng,
-    ) -> anyhow::Result<(Self, Vec<u8>)> {
-        let key = X25519::genkey(rng)?;
-        let mut handshake = NqHandshake::<X25519, AesGcm, Sha256, _>::new(
+        rng: &'b mut RNG,
+    ) -> anyhow::Result<(Self, Vec<u8>)>
+    where
+        RNG: clatter::traits::Rng,
+    {
+        let key = X25519::genkey_rng(rng)?;
+        let mut handshake = NqHandshakeCore::<X25519, AesGcm, Sha256, RNG>::new(
             noise_nn_psk0(),
             &[],
             false,
@@ -56,7 +59,6 @@ impl Session {
             None,
             None,
             None,
-            rng,
         )?;
         handshake.push_psk(psk);
         debug!("Initialized session handshake state");
@@ -221,7 +223,7 @@ impl Server {
         A: ToSocketAddrs,
     {
         let socket = UdpSocket::bind(addr).await?;
-        let rng = StdRng::from_entropy();
+        let rng = DefaultRng::default();
         self.run(socket, rng).await
     }
 
@@ -229,7 +231,10 @@ impl Server {
         self.node_manager.clone()
     }
 
-    async fn run(mut self, socket: UdpSocket, mut rng: StdRng) -> anyhow::Result<()> {
+    async fn run<RNG>(mut self, socket: UdpSocket, mut rng: RNG) -> anyhow::Result<()>
+    where
+        RNG: clatter::traits::Rng,
+    {
         let mut gc_interval = time::interval(Duration::from_secs(5));
         let max_inactive = Duration::from_secs(30);
         loop {
@@ -350,13 +355,16 @@ impl Server {
         Ok(())
     }
 
-    async fn handle_request(
+    async fn handle_request<RNG>(
         &self,
         (len, src): (usize, SocketAddr),
         buf: &mut [u8],
         socket: &UdpSocket,
-        rng: &mut StdRng,
-    ) -> anyhow::Result<()> {
+        rng: &mut RNG,
+    ) -> anyhow::Result<()>
+    where
+        RNG: clatter::traits::Rng,
+    {
         match self.sessions.get_mut(&src) {
             Some(mut entry) if len > MIN_PACKET_LENGTH => {
                 let (src, session) = entry.pair_mut();
