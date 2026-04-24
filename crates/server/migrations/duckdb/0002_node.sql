@@ -10,8 +10,4 @@ CREATE TABLE IF NOT EXISTS node_activity_journal (
     received_at     TIMESTAMPTZ NOT NULL,
     partition_date  DATE GENERATED ALWAYS AS (received_at::DATE),
     PRIMARY KEY (node_id, received_at)
-) WITH (
-    compression = 'alp', 
-    partition_by = partition_date, 
-    checkpoint_threshold = 1000
 );

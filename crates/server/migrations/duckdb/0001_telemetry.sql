@@ -1,4 +1,5 @@
 SET timezone='UTC';
+SET checkpoint_threshold='50KiB';
 
 CREATE TABLE IF NOT EXISTS telemetry_raw (
     received_at     TIMESTAMPTZ NOT NULL,
@@ -7,10 +8,6 @@ CREATE TABLE IF NOT EXISTS telemetry_raw (
     inside_temp     REAL,
     heater_on       BOOLEAN,
     PRIMARY KEY (node_id, received_at)
-) WITH (
-    compression = 'alp', 
-    partition_by = partition_date, 
-    checkpoint_threshold = 1000
 );
 
 CREATE VIEW IF NOT EXISTS v_telemetry_by_minute AS
