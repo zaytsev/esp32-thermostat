@@ -66,7 +66,7 @@ impl Default for ConnectionOptions {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 struct Esp32Rng(Trng);
 
 impl RngCore for Esp32Rng {

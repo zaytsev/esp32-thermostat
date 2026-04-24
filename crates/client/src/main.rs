@@ -1,7 +1,7 @@
 #![no_std]
 #![no_main]
 
-use defmt::{debug, error};
+use defmt::{debug, error, expect};
 use defmt_rtt as _;
 use embassy_executor::Spawner;
 use embassy_net::{HardwareAddress, Stack, StackResources};
@@ -16,7 +16,7 @@ use esp_hal::{
     rng::Rng,
     timer::timg::{MwdtStage, TimerGroup},
 };
-use esp_radio::{Controller, init};
+use esp_radio::wifi;
 use esp_storage::FlashStorage;
 use esp32_thermostat_common::proto::HeaterParams;
 
@@ -90,12 +90,18 @@ async fn main(spawner: Spawner) -> ! {
     let software_interrupt = SoftwareInterruptControl::new(peripherals.SW_INTERRUPT);
     esp_rtos::start(timg0.timer0, software_interrupt.software_interrupt0);
 
-    let esp_wifi_ctrl = &*mk_static!(Controller<'static>, defmt::unwrap!(init()));
-    let wifi_config = esp_radio::wifi::Config::default();
-    let (controller, interfaces) =
-        esp_radio::wifi::new(esp_wifi_ctrl, peripherals.WIFI, wifi_config).unwrap();
+    let wifi_config = wifi::Config::Station(
+        wifi::sta::StationConfig::default()
+            .with_ssid(SSID)
+            .with_password(PASSWORD.into()),
+    );
 
-    let wifi_interface = interfaces.sta;
+    let (controller, interfaces) = expect!(wifi::new(
+        peripherals.WIFI,
+        wifi::ControllerConfig::default().with_initial_config(wifi_config),
+    ));
+
+    let wifi_interface = interfaces.station;
 
     let config = embassy_net::Config::dhcpv4(Default::default());
 
@@ -127,29 +133,27 @@ async fn main(spawner: Spawner) -> ! {
     let heater_control = mk_static!(heater::ControlChannel, heater::ControlChannel::new());
     let telemetry_control = mk_static!(telemetry::ControlChannel, telemetry::ControlChannel::new());
 
-    spawner.must_spawn(task::network::run(runner));
-    spawner.must_spawn(task::wifi::connect(
+    spawner.spawn(expect!(task::network::run(runner)));
+    spawner.spawn(expect!(task::wifi::connect(
         controller,
-        SSID,
-        PASSWORD,
         WIFI_RECONNECT_INTERVAL,
         app_events.sender(),
-    ));
-    spawner.must_spawn(task::onewire::read_temperature(
+    )));
+    spawner.spawn(expect!(task::onewire::read_temperature(
         task::onewire::init_bus(peripherals.RMT, peripherals.GPIO0), // onewire_bus,
         TEMPERATURE_READING_INTERVAL,
         app_events.sender(),
-    ));
-    spawner.must_spawn(heater::run(
+    )));
+    spawner.spawn(expect!(heater::run(
         config.heater.clone(),
         Output::new(peripherals.GPIO1, Level::High, OutputConfig::default()),
         heater_control.receiver(),
         app_events.sender(),
-    ));
+    )));
 
     let sender_id = get_node_id(stack);
 
-    spawner.must_spawn(task::telemetry::run(
+    spawner.spawn(expect!(task::telemetry::run(
         sender_id,
         telemetry::PresharedKey::from(SHARED_SECRET),
         telemetry::ConnectionOptions {
@@ -159,7 +163,7 @@ async fn main(spawner: Spawner) -> ! {
         stack,
         telemetry_control.receiver(),
         app_events.sender(),
-    ));
+    )));
 
     let mut latest_temp = 0.0f32;
     let mut latest_heater_status = false;

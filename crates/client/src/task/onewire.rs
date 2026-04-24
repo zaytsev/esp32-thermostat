@@ -74,6 +74,9 @@ pub async fn read_temperature(
             Err(esp_hal_rmt_onewire::Error::SendError(e)) => {
                 warn!("Error reading onewire sensors: send error: {:?}", e);
             }
+            Err(esp_hal_rmt_onewire::Error::ConfigError(e)) => {
+                warn!("Error configuring onewire: {:?}", e)
+            }
         }
 
         Timer::after(read_interval).await
